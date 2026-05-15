@@ -1,0 +1,146 @@
+const http = require("http");
+const { createHash, randomUUID } = require("crypto");
+const { URL } = require("url");
+
+const PORT = parseInt(process.env.PORT || "8080", 10);
+const BACKEND_PORT = parseInt(process.env.BACKEND_PORT || "8081", 10);
+const AUTH_TOKEN = (process.env.MCP_AUTH_TOKEN || "").trim();
+const OAUTH_CLIENT_ID = (process.env.OAUTH_CLIENT_ID || "").trim();
+const OAUTH_CLIENT_SECRET = (process.env.OAUTH_CLIENT_SECRET || "").trim();
+
+const authCodes = {};
+
+function parseBody(req) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString();
+      const ct = req.headers["content-type"] || "";
+      if (ct.includes("application/json")) {
+        try { resolve(JSON.parse(raw)); } catch { resolve(raw); }
+      } else if (ct.includes("urlencoded")) {
+        resolve(Object.fromEntries(new URLSearchParams(raw)));
+      } else { resolve(raw); }
+    });
+  });
+}
+
+function sendJson(res, status, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(status, { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) });
+  res.end(body);
+}
+
+// Transparent byte-pipe to the internal MCP server. No session state held
+// in this layer. If the backend returns 404 for an unknown session id we
+// propagate it as-is so the client can reinitialize cleanly per MCP spec.
+// Do NOT silently remap stale ids to new sessions — see
+// PM-Labs/mcp-playwright@1d75780 for root cause analysis.
+function proxy(req, res, bodyBuf) {
+  // Strip the public-facing Authorization (Bearer is consumed by this proxy,
+  // not the upstream MCP) and force the host header to localhost so upstream
+  // host checks accept the proxied request.
+  const headers = { ...req.headers, host: "localhost:" + BACKEND_PORT };
+  delete headers["authorization"];
+  delete headers["content-length"];
+  if (bodyBuf) headers["content-length"] = bodyBuf.length;
+  const proxyReq = http.request(
+    { hostname: "127.0.0.1", port: BACKEND_PORT, path: req.url, method: req.method, headers },
+    (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    }
+  );
+  proxyReq.on("error", (e) => { console.error("[PROXY] Backend error:", e.message); sendJson(res, 502, { error: "backend_unavailable" }); });
+  if (bodyBuf) proxyReq.write(bodyBuf);
+  proxyReq.end();
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, "http://localhost:" + PORT);
+  const path = url.pathname;
+  if (path === "/health") return sendJson(res, 200, { status: "ok" });
+  if (path === "/.well-known/oauth-protected-resource") {
+    const base = "https://" + req.headers.host;
+    return sendJson(res, 200, { resource: base + "/mcp", authorization_servers: [base] });
+  }
+  if (path === "/.well-known/oauth-authorization-server") {
+    const base = "https://" + req.headers.host;
+    return sendJson(res, 200, { issuer: base, authorization_endpoint: base + "/authorize", token_endpoint: base + "/oauth/token", grant_types_supported: ["authorization_code", "client_credentials"], code_challenge_methods_supported: ["S256"], response_types_supported: ["code"] });
+  }
+  if (path === "/authorize" && req.method === "GET") {
+    const p = url.searchParams;
+    if (p.get("client_id") !== OAUTH_CLIENT_ID) return sendJson(res, 401, { error: "invalid_client" });
+    if (p.get("response_type") !== "code") return sendJson(res, 400, { error: "unsupported_response_type" });
+    if (!p.get("code_challenge")) return sendJson(res, 400, { error: "code_challenge required" });
+    const code = randomUUID();
+    authCodes[code] = { codeChallenge: p.get("code_challenge"), codeChallengeMethod: p.get("code_challenge_method") || "S256", redirectUri: p.get("redirect_uri"), expiresAt: Date.now() + 5 * 60 * 1000 };
+    const redir = new URL(p.get("redirect_uri"));
+    redir.searchParams.set("code", code);
+    if (p.get("state")) redir.searchParams.set("state", p.get("state"));
+    res.writeHead(302, { Location: redir.toString() });
+    return res.end();
+  }
+  if (path === "/oauth/token" && req.method === "POST") {
+    const body = await parseBody(req);
+    if (body.grant_type === "authorization_code") {
+      const stored = authCodes[body.code];
+      if (!stored || stored.expiresAt < Date.now()) return sendJson(res, 400, { error: "invalid_grant" });
+      const expected = createHash("sha256").update(body.code_verifier).digest("base64url");
+      if (expected !== stored.codeChallenge) return sendJson(res, 400, { error: "invalid_grant" });
+      if (body.redirect_uri && body.redirect_uri !== stored.redirectUri) return sendJson(res, 400, { error: "invalid_grant" });
+      delete authCodes[body.code];
+      return sendJson(res, 200, { access_token: AUTH_TOKEN, token_type: "Bearer", expires_in: 86400 });
+    }
+    let cid, csec;
+    const ba = req.headers["authorization"];
+    if (ba && ba.startsWith("Basic ")) {
+      const decoded = Buffer.from(ba.slice(6), "base64").toString();
+      const colon = decoded.indexOf(":");
+      cid = decoded.slice(0, colon); csec = decoded.slice(colon + 1);
+    } else { cid = body.client_id; csec = body.client_secret; }
+    if (cid !== OAUTH_CLIENT_ID || csec !== OAUTH_CLIENT_SECRET) return sendJson(res, 401, { error: "invalid_client" });
+    return sendJson(res, 200, { access_token: AUTH_TOKEN, token_type: "Bearer", expires_in: 86400 });
+  }
+  // Proxy Meta OAuth callback to Python callback server (port 8082)
+  const CALLBACK_PORT = parseInt(process.env.CALLBACK_PORT || "8082", 10);
+  if (path === "/callback" || path === "/token") {
+    const cHeaders = { ...req.headers, host: "localhost:" + CALLBACK_PORT };
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      const bodyBuf = Buffer.concat(chunks);
+      delete cHeaders["content-length"];
+      if (bodyBuf.length) cHeaders["content-length"] = bodyBuf.length;
+      const cReq = http.request({ hostname: "127.0.0.1", port: CALLBACK_PORT, path: req.url, method: req.method, headers: cHeaders }, (cRes) => {
+        res.writeHead(cRes.statusCode, cRes.headers);
+        cRes.pipe(res);
+      });
+      cReq.on("error", (e) => { console.error("[CALLBACK] Error:", e.message); sendJson(res, 502, { error: "callback_unavailable" }); });
+      if (bodyBuf.length) cReq.write(bodyBuf);
+      cReq.end();
+    });
+    return;
+  }
+  if (path === "/mcp" || path.startsWith("/mcp/")) {
+    if (AUTH_TOKEN) {
+      const ah = req.headers["authorization"];
+      if (!ah || !ah.startsWith("Bearer ")) {
+        res.writeHead(401, { "WWW-Authenticate": "Bearer resource_metadata=\"https://" + req.headers.host + "/.well-known/oauth-protected-resource\"", "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "Unauthorized" }));
+      }
+      if (ah.slice(7) !== AUTH_TOKEN) {
+        res.writeHead(401, { "WWW-Authenticate": "Bearer error=\"invalid_token\"", "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "Unauthorized" }));
+      }
+    }
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => proxy(req, res, Buffer.concat(chunks)));
+    return;
+  }
+  sendJson(res, 404, { error: "not_found" });
+});
+
+server.listen(PORT, "0.0.0.0", () => { console.log("OAuth proxy listening on :" + PORT + ", backend on :" + BACKEND_PORT); });
