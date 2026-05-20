@@ -770,9 +770,12 @@ def test_translate_video_rules_passthrough_raw_format():
     assert updated_videos == videos_array
 
 
-def test_translate_video_rules_preserves_existing_adlabels():
-    """If videos_array entries already have adlabels, do not override them."""
-    # User-supplied labels via videos[{"label": "my_label"}]
+def test_translate_video_rules_reuses_existing_adlabel():
+    """If videos_array entries already have adlabels (from videos[].label),
+    the rule's video_label must reuse that label name so Meta sees matching
+    asset labels on both sides. Minting PBOARD_VID_N while preserving the
+    user's adlabel triggers error_subcode 2446173 ("Target rule label ...
+    doesn't refer to any of the asset labels")."""
     videos_array = [
         {"video_id": "vidA", "adlabels": [{"name": "user_label"}]},
     ]
@@ -785,10 +788,42 @@ def test_translate_video_rules_preserves_existing_adlabels():
 
     translated, updated_videos = _translate_video_customization_rules(rules, videos_array)
 
-    # video_label at rule level uses auto-generated name
-    assert translated[0]["video_label"] == {"name": "PBOARD_VID_0"}
-    # ...but the existing adlabels on the video are preserved (not overridden)
+    # Rule video_label points at the adlabel the caller set on the video.
+    assert translated[0]["video_label"] == {"name": "user_label"}
+    # Video adlabel is unchanged.
     assert updated_videos[0]["adlabels"] == [{"name": "user_label"}]
+
+
+def test_translate_video_rules_same_video_id_different_labels_uses_first():
+    """Caller passes the same video_id twice with different labels (the ALYNNE
+    repro): videos=[{vid:X,label:L1},{vid:X,label:L2}] +
+    rules=[{FEED,video_ids:[X]},{STORY,video_ids:[X]}].
+
+    Both rules resolve to the first adlabel found for that video_id, producing
+    a payload Meta accepts (rule labels match the asset labels present on the
+    videos). Meta previously rejected this with error_subcode 2446173 because
+    the translator minted PBOARD_VID_0 for the rules but left feed_video /
+    story_video on the videos."""
+    videos_array = [
+        {"video_id": "X", "adlabels": [{"name": "feed_video"}]},
+        {"video_id": "X", "adlabels": [{"name": "story_video"}]},
+    ]
+    rules = [
+        {"placement_groups": ["FEED"], "customization_spec": {"video_ids": ["X"]}},
+        {"placement_groups": ["STORY"], "customization_spec": {"video_ids": ["X"]}},
+    ]
+
+    translated, updated_videos = _translate_video_customization_rules(rules, videos_array)
+
+    assert translated[0]["video_label"] == {"name": "feed_video"}
+    assert translated[1]["video_label"] == {"name": "feed_video"}
+    # Videos retain their explicit labels (Meta sees feed_video + story_video
+    # as valid asset labels, so PBOARD_VID_0 never appears).
+    assert updated_videos[0]["adlabels"] == [{"name": "feed_video"}]
+    assert updated_videos[1]["adlabels"] == [{"name": "story_video"}]
+    # Sanity: no PBOARD_VID_* leaks into the payload.
+    for rule in translated:
+        assert "PBOARD_VID" not in rule["video_label"]["name"]
 
 
 def test_translate_video_rules_string_video_label_coerced():
@@ -919,6 +954,120 @@ async def test_create_ad_creative_videos_with_placement_rules_sends_correct_payl
         assert "story" in story_rule["customization_spec"]["facebook_positions"]
         assert "story" in story_rule["customization_spec"]["instagram_positions"]
         assert story_rule["video_label"] == {"name": "PBOARD_VID_1"}
+
+
+@pytest.mark.asyncio
+async def test_lead_form_with_videos_and_rules_emits_call_to_actions_plural():
+    """Lead-form ads built via asset_feed_spec MUST emit `call_to_actions`
+    (plural object array) carrying value.lead_gen_form_id, not the string-only
+    `call_to_action_types`. Without the plural form, Meta accepts the creative
+    but silently drops the form id, and the downstream create_ad fails with
+    error_subcode 3390001 ("Missing Lead Form").
+
+    Live-verified 2026-04-30 against Sandbox A (act_1276764704512927) — POSTing
+    asset_feed_spec.call_to_actions plural with value.lead_gen_form_id and
+    value.link returned creative 1651066586172582 with the form preserved on
+    readback.
+    """
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "1050252844829277",
+            "page_name": "Sandbox Page",
+        }
+
+        mock_api.side_effect = [
+            {"picture": "https://example.com/vidA-thumb.jpg"},
+            {"picture": "https://example.com/vidB-thumb.jpg"},
+            {"id": "creative_lead_form"},
+            {"id": "creative_lead_form", "name": "Lead Form Multi-Placement", "status": "ACTIVE"},
+        ]
+
+        await create_ad_creative(
+            account_id="act_1276764704512927",
+            videos=[
+                {"video_id": "979767987909906", "label": "feed_1x1"},
+                {"video_id": "1603514887420866", "label": "reels_9x16"},
+            ],
+            asset_customization_rules=[
+                {
+                    "customization_spec": {
+                        "publisher_platforms": ["facebook"],
+                        "facebook_positions": ["feed"],
+                    },
+                    "video_label": {"name": "feed_1x1"},
+                },
+                {
+                    "customization_spec": {
+                        "publisher_platforms": ["facebook"],
+                        "facebook_positions": ["story"],
+                    },
+                    "video_label": {"name": "reels_9x16"},
+                },
+            ],
+            name="Lead Form Multi-Placement",
+            link_url="https://www.example.com/lead",
+            call_to_action_type="SIGN_UP",
+            lead_gen_form_id="1022993823609804",
+            access_token="test_token",
+        )
+
+        creative_data = mock_api.call_args_list[2][0][2]
+        afs = creative_data["asset_feed_spec"]
+
+        # The plural shape is the ratchet — string-only call_to_action_types
+        # MUST NOT be emitted when a form id is present (would silently drop it).
+        assert "call_to_actions" in afs, (
+            f"Expected call_to_actions plural carrier; got afs keys={list(afs.keys())}"
+        )
+        assert "call_to_action_types" not in afs, (
+            "call_to_action_types (string-only) must not coexist with lead_gen_form_id "
+            "— it is the silent-drop carrier"
+        )
+
+        ctas = afs["call_to_actions"]
+        assert isinstance(ctas, list) and len(ctas) == 1
+        cta = ctas[0]
+        assert cta["type"] == "SIGN_UP"
+        assert cta["value"]["lead_gen_form_id"] == "1022993823609804"
+        assert cta["value"]["link"] == "https://www.example.com/lead"
+
+
+@pytest.mark.asyncio
+async def test_non_lead_cta_keeps_call_to_action_types_string_array():
+    """Regression guard: when there's no lead_gen_form_id and no phone_number,
+    the existing string-only call_to_action_types path stays untouched —
+    don't churn shapes for non-lead creatives.
+    """
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "1050252844829277",
+            "page_name": "Sandbox Page",
+        }
+        mock_api.side_effect = [
+            {"picture": "https://example.com/thumb.jpg"},
+            {"id": "creative_plain"},
+            {"id": "creative_plain", "name": "Plain Video", "status": "ACTIVE"},
+        ]
+
+        await create_ad_creative(
+            account_id="act_1276764704512927",
+            videos=[{"video_id": "979767987909906"}],
+            name="Plain Video",
+            link_url="https://www.example.com/",
+            call_to_action_type="LEARN_MORE",
+            access_token="test_token",
+        )
+
+        creative_data = mock_api.call_args_list[1][0][2]
+        afs = creative_data["asset_feed_spec"]
+        assert afs.get("call_to_action_types") == ["LEARN_MORE"]
+        assert "call_to_actions" not in afs
 
 
 # ---------------------------------------------------------------------------

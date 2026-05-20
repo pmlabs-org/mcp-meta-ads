@@ -29,14 +29,14 @@ async def get_adsets(account_id: str, access_token: Optional[str] = None, limit:
     if campaign_id:
         endpoint = f"{campaign_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency},regional_regulated_categories,regional_regulation_identities",
+            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_adjustments,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency},regional_regulated_categories,regional_regulation_identities",
             "limit": limit
         }
     else:
         # Use account endpoint if no campaign_id is given
         endpoint = f"{account_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency},regional_regulated_categories,regional_regulation_identities",
+            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_adjustments,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency},regional_regulated_categories,regional_regulation_identities",
             "limit": limit
         }
         # Note: Removed the attempt to add campaign_id to params for the account endpoint case, 
@@ -69,7 +69,7 @@ async def get_adset_details(adset_id: str, access_token: Optional[str] = None) -
     endpoint = f"{adset_id}"
     # Explicitly prioritize frequency_control_specs in the fields request
     params = {
-        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,dsa_payor,is_dynamic_creative,is_incremental_attribution_enabled,regional_regulated_categories,regional_regulation_identities"
+        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_adjustments,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,dsa_payor,is_dynamic_creative,regional_regulated_categories,regional_regulation_identities"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -98,6 +98,7 @@ async def create_adset(
     bid_amount: Optional[int] = None,
     bid_strategy: Optional[str] = None,
     bid_constraints: Optional[Dict[str, Any]] = None,
+    bid_adjustments: Optional[Dict[str, Any]] = None,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     dsa_beneficiary: Optional[str] = None,
@@ -110,7 +111,6 @@ async def create_adset(
     regional_regulated_categories: Optional[List[str]] = None,
     regional_regulation_identities: Optional[Dict[str, Any]] = None,
     attribution_spec: Optional[List[Dict[str, Any]]] = None,
-    is_incremental_attribution_enabled: Optional[bool] = None,
     access_token: Optional[str] = None
 ) -> str:
     """
@@ -162,6 +162,14 @@ async def create_adset(
         bid_constraints: Bid constraints dict. Required for LOWEST_COST_WITH_MIN_ROAS.
                         Use {"roas_average_floor": <value>} where value = target ROAS * 10000.
                         Example: 2.0x ROAS -> {"roas_average_floor": 20000}
+        bid_adjustments: Bid multipliers per targeting dimension. Pass-through to Meta.
+                        Shape: {"user_groups": {"<dim>": {"<value>": <float>, "default": <float>}}}
+                        Dims: age, gender, user_os, device_platform, position_type,
+                              publisher_platform, user_bucket, home_location, locale, etc.
+                        Multipliers are floats, typically 0.0-1.0.
+                        Example: {"user_groups": {"user_os": {"iOS": 0.9, "Android": 0.7, "default": 1.0}}}
+                        NOTE: Writing bid_adjustments requires a Meta app capability that must be
+                              allowlisted. Apps without it get OAuthException (#3).
         start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800').
                    To schedule future delivery: set start_time to a future date and status=ACTIVE.
                    Meta will show effective_status as SCHEDULED and automatically begin delivery at start_time.
@@ -202,15 +210,6 @@ async def create_adset(
                          Example for 1-day click + 1-day view: [{"event_type": "CLICK_THROUGH", "window_days": 1}, {"event_type": "VIEW_THROUGH", "window_days": 1}]
                          Valid event_type values: CLICK_THROUGH, VIEW_THROUGH.
                          Valid window_days values: 1, 7, 28 (depends on event_type and optimization_goal).
-        is_incremental_attribution_enabled: Toggle the ad set's "Attribution model" between
-                                            Standard (false/unset) and Incremental (true). Maps to the
-                                            Ads Manager UI dropdown shown alongside attribution_spec.
-                                            CREATE-ONLY: Meta accepts this field at creation time only.
-                                            Attempts to change it on an existing ad set via update_adset
-                                            return HTTP 200 success but Meta silently drops the field —
-                                            same class as is_dynamic_creative. To change the attribution
-                                            model on an existing ad set, create a new ad set instead.
-                                            Verified 2026-04-15.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -408,6 +407,9 @@ async def create_adset(
     if bid_constraints:
         params["bid_constraints"] = json.dumps(bid_constraints)
 
+    if bid_adjustments is not None:
+        params["bid_adjustments"] = json.dumps(bid_adjustments)
+
     if start_time:
         params["start_time"] = start_time
     
@@ -442,11 +444,9 @@ async def create_adset(
 
     if regional_regulation_identities is not None:
         params["regional_regulation_identities"] = json.dumps(regional_regulation_identities)
+
     if attribution_spec is not None:
         params["attribution_spec"] = json.dumps(attribution_spec)
-
-    if is_incremental_attribution_enabled is not None:
-        params["is_incremental_attribution_enabled"] = "true" if bool(is_incremental_attribution_enabled) else "false"
 
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")
@@ -488,6 +488,7 @@ async def create_adset(
 @meta_api_tool
 async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dict[str, Any]]] = None, bid_strategy: Optional[str] = None,
                         bid_amount: Optional[int] = None, bid_constraints: Optional[Dict[str, Any]] = None,
+                        bid_adjustments: Optional[Dict[str, Any]] = None,
                         name: Optional[str] = None,
                         status: Optional[str] = None, targeting: Optional[Dict[str, Any]] = None,
                         optimization_goal: Optional[str] = None, daily_budget: Optional[int] = None, lifetime_budget: Optional[int] = None,
@@ -500,7 +501,6 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                         regional_regulated_categories: Optional[List[str]] = None,
                         regional_regulation_identities: Optional[Dict[str, Any]] = None,
                         attribution_spec: Optional[List[Dict[str, Any]]] = None,
-                        is_incremental_attribution_enabled: Optional[bool] = None,
                         access_token: Optional[str] = None) -> str:
     """
     Update an ad set with new settings including frequency caps and budgets.
@@ -521,6 +521,10 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         bid_constraints: Bid constraints dict. Required for LOWEST_COST_WITH_MIN_ROAS.
                         Use {"roas_average_floor": <value>} where value = target ROAS * 10000.
                         Example: 2.0x ROAS -> {"roas_average_floor": 20000}
+        bid_adjustments: Bid multipliers per targeting dimension. Pass-through to Meta.
+                        Shape: {"user_groups": {"<dim>": {"<value>": <float>, "default": <float>}}}
+                        See create_adset for full docs and dim list.
+                        NOTE: Writing requires a Meta app capability that must be allowlisted.
         status: Update ad set status (ACTIVE, PAUSED, etc.)
         targeting: Complete targeting specifications (replaces existing targeting)
         optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'CONVERSIONS', 'VALUE')
@@ -546,22 +550,12 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         regional_regulation_identities: Dict of verified identity IDs for regional transparency compliance.
                                         Required when regional_regulated_categories is set.
                                         Set individual keys to null to remove them.
-        attribution_spec: NO-OP. Kept in the signature for backwards compatibility only.
-                         Meta does not allow updating attribution_spec after ad set creation
-                         (error 1504040). Any value passed here is silently dropped by this
-                         wrapper and never sent to Meta — previously it was passed through
-                         and guaranteed to fail. To change attribution windows, create a new
-                         ad set via create_adset instead.
-        is_incremental_attribution_enabled: The ad set's "Attribution model" (Standard vs Incremental).
-                                            WARNING: Meta's API accepts this field on POST /{adset-id}
-                                            and returns success, but SILENTLY DROPS the change — same
-                                            class as is_dynamic_creative. Verified 2026-04-15 by setting
-                                            both name and is_incremental_attribution_enabled in a single
-                                            update: name changed, flag did not. To change the attribution
-                                            model on an existing ad set, create a new ad set via
-                                            create_adset and pass is_incremental_attribution_enabled=true
-                                            at creation time. This parameter is kept for symmetry with
-                                            create_adset but will NOT actually flip a live ad set's model.
+        attribution_spec: Attribution window specification for the ad set.
+                         WARNING: Meta no longer supports updating attribution_spec after ad set creation
+                         (error 1504040). To change attribution windows, create a new ad set instead.
+                         This parameter is kept for compatibility but will be rejected by Meta's API.
+                         Valid event_type values: CLICK_THROUGH, VIEW_THROUGH.
+                         Valid window_days values: 1, 7, 28 (depends on event_type and optimization_goal).
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not adset_id:
@@ -624,7 +618,10 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
 
     if bid_constraints is not None:
         params['bid_constraints'] = json.dumps(bid_constraints)
-        
+
+    if bid_adjustments is not None:
+        params['bid_adjustments'] = json.dumps(bid_adjustments)
+
     if status is not None:
         params['status'] = status
         
@@ -669,13 +666,8 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
     if regional_regulation_identities is not None:
         params['regional_regulation_identities'] = json.dumps(regional_regulation_identities)
 
-    # NOTE: attribution_spec is deliberately NOT forwarded to Meta here.
-    # Meta rejects updates to this field after ad set creation (error 1504040).
-    # The parameter remains in the signature for backwards compatibility but
-    # is now a documented no-op — see docstring.
-
-    if is_incremental_attribution_enabled is not None:
-        params['is_incremental_attribution_enabled'] = "true" if bool(is_incremental_attribution_enabled) else "false"
+    if attribution_spec is not None:
+        params['attribution_spec'] = json.dumps(attribution_spec)
 
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)
