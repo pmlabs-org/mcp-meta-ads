@@ -337,7 +337,16 @@ def main():
         mcp_server.settings.port = args.port
         mcp_server.settings.stateless_http = True
         mcp_server.settings.json_response = not args.sse_response
-        
+        # Disable DNS rebinding protection. The SDK auto-enables it when the
+        # server binds to a loopback host (127.0.0.1 / localhost / ::1) and
+        # ships a port-wildcard allowlist (127.0.0.1:*). An upstream nginx
+        # with `proxy_set_header Host $host;` strips the port from the Host
+        # header before forwarding, so the allowlist does not match and every
+        # request is rejected with HTTP 421 (the 1.0.106 production
+        # regression). The protection is irrelevant for a loopback-only
+        # service that no external client can reach.
+        mcp_server.settings.transport_security.enable_dns_rebinding_protection = False
+
         # Import all tool modules to ensure they are registered
         logger.info("Ensuring all tools are registered for HTTP transport")
         from . import accounts, campaigns, adsets, ads, insights, authentication
@@ -372,7 +381,7 @@ def main():
         try:
             logger.info("Starting FastMCP server with Streamable HTTP transport")
             print(f"✅ Server configured successfully")
-            print(f"   URL: http://{args.host}:{args.port}{mcp_server.settings.streamable_http_path}/")
+            print(f"   URL: http://{args.host}:{args.port}{mcp_server.settings.streamable_http_path}")
             print(f"   Mode: {'Stateless' if mcp_server.settings.stateless_http else 'Stateful'}")
             print(f"   Format: {'JSON' if mcp_server.settings.json_response else 'SSE'}")
             mcp_server.run(transport="streamable-http")
