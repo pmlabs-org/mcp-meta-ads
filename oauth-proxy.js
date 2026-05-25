@@ -7,6 +7,7 @@ const BACKEND_PORT = parseInt(process.env.BACKEND_PORT || "8081", 10);
 const AUTH_TOKEN = (process.env.MCP_AUTH_TOKEN || "").trim();
 const OAUTH_CLIENT_ID = (process.env.OAUTH_CLIENT_ID || "").trim();
 const OAUTH_CLIENT_SECRET = (process.env.OAUTH_CLIENT_SECRET || "").trim();
+const META_ACCESS_TOKEN = (process.env.META_ACCESS_TOKEN || "").trim();
 
 const authCodes = {};
 
@@ -42,7 +43,14 @@ function proxy(req, res, bodyBuf) {
   // not the upstream MCP) and force the host header to localhost so upstream
   // host checks accept the proxied request.
   const headers = { ...req.headers, host: "localhost:" + BACKEND_PORT };
-  delete headers["authorization"];
+  // Replace the MCP auth token (used to authenticate to this proxy) with the
+  // Meta access token so the backend's AuthInjectionMiddleware accepts the
+  // request and uses it for Meta API calls.
+  if (META_ACCESS_TOKEN) {
+    headers["authorization"] = "Bearer " + META_ACCESS_TOKEN;
+  } else {
+    delete headers["authorization"];
+  }
   delete headers["content-length"];
   if (bodyBuf) headers["content-length"] = bodyBuf.length;
   const proxyReq = http.request(
