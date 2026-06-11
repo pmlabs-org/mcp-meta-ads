@@ -1,0 +1,18 @@
+# .fork-sync-ignore — upstream commits fork-sync must skip.
+# One SHA per line, optional reason after whitespace.
+# Blank lines and # comments allowed.
+#
+# See CLAUDE.md in pmin-mcpinfrastructure for the full convention.
+
+# --- Already cherry-picked with minor divergence (2026-06-07) ---
+# These upstream commits are already in our fork under different SHAs.
+# The patches differ by 1-2 lines (conflict resolution) so git --cherry-pick
+# doesn't detect equivalence automatically.
+85b40cd  already applied as 368c661 (Fix DOF + video + multi-text returning Meta error 2061015)
+3f57250  already applied as 288b72d (Bump version to 1.0.111)
+ab6689f  already applied as 0f04b56 (fix(video): surface real thumbnail frame and processing status)
+24032e2  already applied as e6b3ad5 (Bump version to 1.0.112)
+e4f872b  already applied as d186d79 (fix(auth): distinguish policy-blocked errors from token expiry 1.0.113)
+
+# --- Upstream README/docs not relevant to our fork ---
+4d12f65  docs(readme): Pipeboard MCP family branding — not relevant to our fork
