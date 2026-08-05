@@ -1,11 +1,7 @@
 name: "Release: Test, PyPI, MCP"
 
 on:
-  release:
-    types: [published]
-  # Allow manual triggering for testing
-  workflow_dispatch:
-
+  workflow_dispatch: # Disabled - upstream artifact, not needed for Pathfinder operations
 jobs:
   test_and_build:
     name: Test and Build (pre-release gate)
