@@ -61,7 +61,7 @@ def ensure_act_prefix(account_id: str) -> str:
 
 
 # Constants
-META_GRAPH_API_VERSION = "v24.0"
+META_GRAPH_API_VERSION = "v25.0"
 META_GRAPH_API_BASE = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 USER_AGENT = "meta-ads-mcp/1.0"
 
