@@ -201,314 +201,219 @@ For advanced users who need to self-host, the package can be installed from sour
 
 ### Available MCP Tools
 
-1. `mcp_meta_ads_get_ad_accounts`
-   - Get ad accounts accessible by a user
-   - Inputs:
-     - `access_token` (optional): Meta API access token (will use cached token if not provided)
-     - `user_id`: Meta user ID or "me" for the current user
-     - `limit`: Maximum number of accounts to return (default: 200)
-   - Returns: List of accessible ad accounts with their details
+**84 tools** across 30 categories. Quick reference:
 
-2. `mcp_meta_ads_get_account_info`
-   - Get detailed information about a specific ad account
-   - Inputs:
-     - `access_token` (optional): Meta API access token (will use cached token if not provided)
-     - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
-   - Returns: Detailed information about the specified account
+| Category | Tools |
+|---|---|
+| [Accounts](#accounts) | `get_ad_accounts`, `get_account_info`, `get_account_pages` |
+| [Campaigns](#campaigns) | `get_campaigns`, `get_campaign_details`, `create_campaign`, `update_campaign` |
+| [Ad Sets](#ad-sets) | `get_adsets`, `get_adset_details`, `create_adset`, `update_adset` |
+| [Ads](#ads) | `get_ads`, `get_ad_details`, `create_ad`, `update_ad` |
+| [Creatives](#creatives) | `get_ad_creatives`, `get_creative_details`, `create_ad_creative`, `update_ad_creative` |
+| [Images/Video](#imagesvideo) | `upload_ad_image`, `get_ad_image`, `get_image_by_hash`, `compute_image_crops`, `upload_video`, `get_ad_video` |
+| [Insights](#insights) | `get_insights` |
+| [Targeting](#targeting) | `search_interests`, `get_interest_suggestions`, `estimate_audience_size`, `search_behaviors`, `search_demographics`, `search_geo_locations`, `search_pages_by_name` |
+| [Budget](#budget) | `create_budget_schedule` |
+| [Ad Library](#ad-library) | `search_ads_archive` |
+| [Search](#search) | `search` |
+| [Auth](#auth) | `get_login_link` |
+| [Other](#other) | `fetch` (record cache lookup, see [Search](#search)) |
+| [Custom Audiences](#custom-audiences) | `create_custom_audience`, `get_custom_audiences`, `update_custom_audience`, `delete_custom_audience`, `add_users_to_custom_audience` |
+| [Lookalike Audiences](#lookalike-audiences) | `create_lookalike_audience`, `get_lookalike_audience_status` |
+| [Conversion API (CAPI)](#conversion-api-capi) | `send_conversion_events`, `get_capi_diagnostics` |
+| [Custom Conversions](#custom-conversions) | `create_custom_conversion`, `get_custom_conversions` |
+| [Advanced Insights](#advanced-insights) | `get_insights_with_breakdowns`, `create_async_insights_report`, `get_async_insights_report` |
+| [Automated Rules](#automated-rules) | `create_automated_rule`, `get_automated_rules`, `get_rule_execution_history` |
+| [Pixels](#pixels) | `get_pixels`, `get_pixel_events` |
+| [A/B Testing](#ab-testing) | `get_ab_tests`, `create_ab_test` |
+| [Product Catalogs](#product-catalogs) | `get_product_catalogs`, `get_catalog_products`, `create_product_catalog`, `get_product_sets` |
+| [Lead Forms](#lead-forms) | `get_lead_forms`, `get_leads`, `create_lead_form` |
+| [Reach & Frequency](#reach--frequency) | `get_reach_frequency_predictions`, `create_reach_frequency_prediction` |
+| [Business Manager](#business-manager) | `get_business_info`, `get_business_ad_accounts`, `get_business_users` |
+| [Page Posts](#page-posts) | `get_page_posts`, `get_post_insights`, `create_promoted_post` |
+| [Offline Conversions](#offline-conversions) | `create_offline_event_set`, `upload_offline_events` |
+| [Advanced Creatives](#advanced-creatives) | `delete_ad_creative`, `get_creative_preview`, `get_dynamic_creative_elements` |
+| [Saved Audiences](#saved-audiences) | `create_saved_audience`, `update_saved_audience`, `delete_saved_audience` |
+| [Attribution](#attribution) | `get_attribution_report`, `get_attribution_settings` |
 
-3. `mcp_meta_ads_get_account_pages`
-   - Get pages associated with a Meta Ads account
-   - Inputs:
-     - `access_token` (optional): Meta API access token (will use cached token if not provided)
-     - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX) or "me" for the current user's pages
-   - Returns: List of pages associated with the account, useful for ad creation and management
+All write tools (`create_*`, `update_*`) default new objects to `status: PAUSED` — Meta has no separate publish step, so flipping `status` to `ACTIVE` via `update_campaign` / `update_adset` / `update_ad` is what makes something go live. Every tool accepts an optional `access_token` param; omit it to use the cached/authenticated token.
 
-4. `mcp_meta_ads_get_campaigns`
-   - Get campaigns for a Meta Ads account with optional filtering
-   - Inputs:
-     - `access_token` (optional): Meta API access token (will use cached token if not provided)
-     - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
-     - `limit`: Maximum number of campaigns to return (default: 10)
-     - `status_filter`: Filter by status (empty for all, or 'ACTIVE', 'PAUSED', etc.)
-   - Returns: List of campaigns matching the criteria
+---
 
-5. `mcp_meta_ads_get_campaign_details`
-   - Get detailed information about a specific campaign
-   - Inputs:
-     - `access_token` (optional): Meta API access token (will use cached token if not provided)
-     - `campaign_id`: Meta Ads campaign ID
-   - Returns: Detailed information about the specified campaign
+#### Accounts
 
-6. `mcp_meta_ads_create_campaign`
-   - Create a new campaign in a Meta Ads account
-   - Inputs:
-     - `access_token` (optional): Meta API access token (will use cached token if not provided)
-     - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
-     - `name`: Campaign name
-     - `objective`: Campaign objective (ODAX, outcome-based). Must be one of:
-       - `OUTCOME_AWARENESS`
-       - `OUTCOME_TRAFFIC`
-       - `OUTCOME_ENGAGEMENT`
-       - `OUTCOME_LEADS`
-       - `OUTCOME_SALES`
-       - `OUTCOME_APP_PROMOTION`
-       
-       Note: Legacy objectives such as `BRAND_AWARENESS`, `LINK_CLICKS`, `CONVERSIONS`, `APP_INSTALLS`, etc. are no longer valid for new campaigns and will cause a 400 error. Use the outcome-based values above. Common mappings:
-       - `BRAND_AWARENESS` → `OUTCOME_AWARENESS`
-       - `REACH` → `OUTCOME_AWARENESS`
-       - `LINK_CLICKS`, `TRAFFIC` → `OUTCOME_TRAFFIC`
-       - `POST_ENGAGEMENT`, `PAGE_LIKES`, `EVENT_RESPONSES`, `VIDEO_VIEWS` → `OUTCOME_ENGAGEMENT`
-       - `LEAD_GENERATION` → `OUTCOME_LEADS`
-       - `CONVERSIONS`, `CATALOG_SALES`, `MESSAGES` (sales-focused flows) → `OUTCOME_SALES`
-       - `APP_INSTALLS` → `OUTCOME_APP_PROMOTION`
-     - `status`: Initial campaign status (default: PAUSED)
-     - `special_ad_categories`: List of special ad categories if applicable
-     - `daily_budget`: Daily budget in account currency (in cents)
-     - `lifetime_budget`: Lifetime budget in account currency (in cents)
-     - `bid_strategy`: Bid strategy. Must be one of: `LOWEST_COST_WITHOUT_CAP`, `LOWEST_COST_WITH_BID_CAP`, `COST_CAP`, `LOWEST_COST_WITH_MIN_ROAS`.
-   - Returns: Confirmation with new campaign details
+- **`get_ad_accounts`** — Ad accounts accessible by a user. Inputs: `user_id` (default `"me"`), `limit` (default 200). `amount_spent`/`balance` are returned in currency units (dollars), not cents.
+- **`get_account_info`** — Detailed info for one ad account. Inputs: `account_id`, `fields` (optional override of the default field set — use for `funding_source_details`, `spend_cap`, `is_prepay_account`, etc). Adds `dsa_required`/`dsa_compliance_note` for EU accounts.
+- **`get_account_pages`** — Facebook Pages associated with an ad account. Input: `account_id`.
 
-   - Example:
-     ```json
-     {
-       "name": "2025 - Bedroom Furniture - Awareness",
-       "account_id": "act_123456789012345",
-       "objective": "OUTCOME_AWARENESS",
-       "special_ad_categories": [],
-       "status": "PAUSED",
-       "buying_type": "AUCTION",
-       "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
-       "daily_budget": 10000
-     }
-     ```
+#### Campaigns
 
-7. `mcp_meta_ads_get_adsets`
-   - Get ad sets for a Meta Ads account with optional filtering by campaign
-   - Inputs:
-     - `access_token` (optional): Meta API access token (will use cached token if not provided)
-     - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
-     - `limit`: Maximum number of ad sets to return (default: 10)
-     - `campaign_id`: Optional campaign ID to filter by
-   - Returns: List of ad sets matching the criteria
+- **`get_campaigns`** — List campaigns. Inputs: `account_id`, `limit`, `status_filter` (e.g. `ACTIVE`/`PAUSED`), `objective_filter` (single or list), `after` (pagination cursor).
+- **`get_campaign_details`** — Full detail for one campaign. Input: `campaign_id`.
+- **`create_campaign`** — Create a campaign with an ODAX objective (`OUTCOME_AWARENESS`, `OUTCOME_TRAFFIC`, `OUTCOME_ENGAGEMENT`, `OUTCOME_LEADS`, `OUTCOME_SALES`, `OUTCOME_APP_PROMOTION` — legacy objectives like `LINK_CLICKS`/`CONVERSIONS` 400 out). Inputs: `account_id`, `name`, `objective`, `status` (default `PAUSED`), `special_ad_categories`, `daily_budget`/`lifetime_budget` (cents), `buying_type`, `bid_strategy` (default `LOWEST_COST_WITHOUT_CAP`), `bid_cap`, `spend_cap`, `campaign_budget_optimization`, `ab_test_control_setups`, `use_adset_level_budgets`. Campaigns don't support `start_time` — set that on the ad set instead.
+- **`update_campaign`** — Update name/status/budget/bid strategy. Inputs: `campaign_id` + any of the create fields, plus `objective` and `adset_budgets` (the correct way to migrate CBO → ABO: pass `[{adset_id, daily_budget}, ...]` — Meta atomically clears the campaign budget and assigns per-ad-set budgets; the older `use_adset_level_budgets=true` flag is silently ignored by Meta).
 
-8. `mcp_meta_ads_get_adset_details`
-   - Get detailed information about a specific ad set
-   - Inputs:
-     - `access_token` (optional): Meta API access token (will use cached token if not provided)
-     - `adset_id`: Meta Ads ad set ID
-   - Returns: Detailed information about the specified ad set
+#### Ad Sets
 
-9. `mcp_meta_ads_create_adset`
-   - Create a new ad set in a Meta Ads account
-   - Inputs:
-     - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
-     - `campaign_id`: Meta Ads campaign ID this ad set belongs to
-     - `name`: Ad set name
-     - `status`: Initial ad set status (default: PAUSED)
-     - `daily_budget`: Daily budget in account currency (in cents) as a string
-     - `lifetime_budget`: Lifetime budget in account currency (in cents) as a string
-     - `targeting`: Targeting specifications (e.g., age, location, interests)
-     - `optimization_goal`: Conversion optimization goal (e.g., 'LINK_CLICKS')
-     - `billing_event`: How you're charged (e.g., 'IMPRESSIONS')
-     - `bid_amount`: Bid amount in cents. Required for LOWEST_COST_WITH_BID_CAP, COST_CAP, TARGET_COST.
-     - `bid_strategy`: Bid strategy (e.g., 'LOWEST_COST_WITHOUT_CAP', 'LOWEST_COST_WITH_MIN_ROAS')
-     - `bid_constraints`: Bid constraints dict. Required for LOWEST_COST_WITH_MIN_ROAS (e.g., `{"roas_average_floor": 20000}`)
-     - `start_time`, `end_time`: Optional start/end times (ISO 8601)
-     - `access_token` (optional): Meta API access token
-   - Returns: Confirmation with new ad set details
+- **`get_adsets`** — List ad sets. Inputs: `account_id`, `limit`, `campaign_id` (optional filter).
+- **`get_adset_details`** — Full detail for one ad set, including `frequency_control_specs`. Input: `adset_id`.
+- **`create_adset`** — Create an ad set. Inputs: `account_id`, `campaign_id`, `name`, `optimization_goal` (valid values depend on objective + `destination_type` — see inline docstring for the full matrix), `billing_event`, `status` (default `PAUSED`), `daily_budget`/`lifetime_budget` (omit both if the parent campaign uses CBO), `targeting` (defaults to broad US 18–65 if omitted), `bid_amount`, `bid_strategy`, `bid_constraints` (required for `LOWEST_COST_WITH_MIN_ROAS`), `bid_adjustments`, `start_time`/`end_time`, `dsa_beneficiary`/`dsa_payor` (required for EU targeting), `promoted_object`, `destination_type`, `is_dynamic_creative`, `frequency_control_specs` (immutable after creation), `multi_advertiser_ads`, `regional_regulated_categories`/`regional_regulation_identities` (Taiwan/Australia/India/Singapore/Thailand), `attribution_spec`. Runs a pre-flight check against the parent campaign to catch CBO budget conflicts and missing `bid_amount` before hitting Meta's API.
+- **`update_adset`** — Update an existing ad set. Same field set as `create_adset` minus the immutable ones (`is_dynamic_creative` and `attribution_spec` are accepted but Meta silently ignores/rejects changes to them post-creation — recreate the ad set instead).
 
-10. `mcp_meta_ads_get_ads`
-    - Get ads for a Meta Ads account with optional filtering
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
-      - `limit`: Maximum number of ads to return (default: 10)
-      - `campaign_id`: Optional campaign ID to filter by
-      - `adset_id`: Optional ad set ID to filter by
-    - Returns: List of ads matching the criteria
+#### Ads
 
-11. `mcp_meta_ads_create_ad`
-    - Create a new ad with an existing creative
-    - Inputs:
-      - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
-      - `name`: Ad name
-      - `adset_id`: Ad set ID where this ad will be placed
-      - `creative_id`: ID of an existing creative to use
-      - `status`: Initial ad status (default: PAUSED)
-      - `bid_amount`: Optional bid amount (in cents)
-      - `tracking_specs`: Optional tracking specifications
-      - `access_token` (optional): Meta API access token
-    - Returns: Confirmation with new ad details
+- **`get_ads`** — List ads. Inputs: `account_id`, `limit`, `campaign_id`/`adset_id` (optional filters).
+- **`get_ad_details`** — Full detail for one ad, including `preview_shareable_link`. Input: `ad_id`.
+- **`create_ad`** — Create an ad from an existing creative. Inputs: `account_id`, `name`, `adset_id`, `creative_id`, `status` (default `PAUSED`), `bid_amount`, `tracking_specs` (pixel events). Dynamic Creative creatives require `is_dynamic_creative=true` on the parent ad set.
+- **`update_ad`** — Update name/status/bid/creative on an ad. Inputs: `ad_id`, `name`, `status`, `bid_amount`, `tracking_specs`, `creative_id` (swaps the ad's creative — FLEX creatives can hit a first-image-mismatch error 3858355; the workaround is a new ad + pause old, since swapping isn't always possible).
 
-12. `mcp_meta_ads_get_ad_details`
-    - Get detailed information about a specific ad
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `ad_id`: Meta Ads ad ID
-    - Returns: Detailed information about the specified ad
+#### Creatives
 
-13. `mcp_meta_ads_get_ad_creatives`
-    - Get creative details for a specific ad
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `ad_id`: Meta Ads ad ID
-    - Returns: Creative details including text, images, and URLs
+- **`get_ad_creatives`** — Creative(s) attached to an ad, with image hashes resolved to URLs and DPA/catalog creatives resolved to `catalog_id`/`catalog_name`. Input: `ad_id`.
+- **`get_creative_details`** — Full detail for one creative by ID, including `asset_feed_spec`, `dynamic_creative_spec` (when applicable), and catalog resolution. Input: `creative_id`.
+- **`create_ad_creative`** — Create a creative. Six modes: existing post (`object_story_id`), simple image/video (`image_hash`/`video_id` + `object_story_spec`), multi-variant copy (`messages[]`/`headlines[]`/`descriptions[]`), Placement Asset Customization (`optimization_type="PLACEMENT"` + `videos`/`images` + `asset_customization_rules`), Dynamic Creative (`dynamic_creative_spec`, requires `is_dynamic_creative` on the ad set), FLEX/Advantage+ (`optimization_type="DEGREES_OF_FREEDOM"`). Inputs: `account_id`, `name`, `page_id`, `link_url`, `message`/`messages`, `headline`/`headlines`, `description`/`descriptions`, `image_hash`/`image_hashes`/`images`, `video_id`/`videos`, `call_to_action_type`, `instagram_actor_id`, `dynamic_creative_spec`, `asset_customization_rules`, `creative_features_spec` (Advantage+ enhancement opt-in/out), `lead_gen_form_id`, `image_crops`, and more — see inline docstring.
+- **`update_ad_creative`** — Meta's API does **not** allow updating content fields (message, headline, image, URL, etc.) on an existing creative — only `name` and `asset_feed_spec`-level optimization settings. To change content, create a new creative and point the ad at it via `update_ad(creative_id=...)`.
 
-14. `mcp_meta_ads_create_ad_creative`
-    - Create a new ad creative using an uploaded image hash
-    - Inputs:
-      - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
-      - `name`: Creative name
-      - `image_hash`: Hash of the uploaded image
-      - `page_id`: Facebook Page ID for the ad
-      - `link_url`: Destination URL
-      - `message`: Ad copy/text
-      - `headline`: Single headline for simple ads (cannot be used with headlines)
-      - `headlines`: List of headlines for dynamic creative testing (cannot be used with headline)
-      - `description`: Single description for simple ads (cannot be used with descriptions)
-      - `descriptions`: List of descriptions for dynamic creative testing (cannot be used with description)
-      - `dynamic_creative_spec`: Dynamic creative optimization settings
-      - `call_to_action_type`: CTA button type (e.g., 'LEARN_MORE')
-      - `instagram_actor_id`: Optional Instagram account ID
-      - `access_token` (optional): Meta API access token
-    - Returns: Confirmation with new creative details
+#### Images/Video
 
-15. `mcp_meta_ads_update_ad_creative`
-    - Update an existing ad creative with new content or settings
-    - Inputs:
-      - `creative_id`: Meta Ads creative ID to update
-      - `name`: New creative name
-      - `message`: New ad copy/text
-      - `headline`: Single headline for simple ads (cannot be used with headlines)
-      - `headlines`: New list of headlines for dynamic creative testing (cannot be used with headline)
-      - `description`: Single description for simple ads (cannot be used with descriptions)
-      - `descriptions`: New list of descriptions for dynamic creative testing (cannot be used with description)
-      - `dynamic_creative_spec`: New dynamic creative optimization settings
-      - `call_to_action_type`: New call to action button type
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-    - Returns: Confirmation with updated creative details
+- **`upload_ad_image`** — Upload an image for use in creatives. Inputs: `account_id`, `file` (data URL/base64) or `image_url`, `name`. Returns `image_hash` plus a Meta CDN `url` for immediate viewing.
+- **`get_ad_image`** — Fetch and view the image an existing ad is serving. Input: `ad_id`.
+- **`get_image_by_hash`** — Fetch and view an image by its hash (e.g. from `upload_ad_image` or a creative's `image_hash`), without needing an ad. Inputs: `account_id`, `image_hash`.
+- **`compute_image_crops`** — Compute the `image_crops` dict for `create_ad_creative` given a source image's dimensions — largest centered region per Meta's 6 accepted aspect ratios (`100x100`, `100x72`, `400x500`, `400x150`, `600x360`, `90x160`). Inputs: `image_width`, `image_height`, `crop_keys` (optional subset).
+- **`upload_video`** — Upload a video to the account's video library. Inputs: `account_id`, `video_url` (preferred — Meta fetches server-side) or `file` (base64, ~100MB practical limit), `name`, `title`, `description`. Returns `video_id`.
+- **`get_ad_video`** — Video details + source/thumbnail URLs + processing status for an ad's video creative. Inputs: `ad_id` or `video_id` (provide `account_id` too when possible — it avoids error 100/33 and error #10 on Business Manager tokens). Poll `video_status` ("processing" → "ready") before calling `create_ad_creative` with the video.
 
-16. `mcp_meta_ads_upload_ad_image`
-    - Upload an image to use in Meta Ads creatives
-    - Inputs:
-      - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
-      - `image_path`: Path to the image file to upload
-      - `name`: Optional name for the image
-      - `access_token` (optional): Meta API access token
-    - Returns: JSON response with image details including hash
+#### Insights
 
-17. `mcp_meta_ads_get_ad_image`
-    - Get, download, and visualize a Meta ad image in one step
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `ad_id`: Meta Ads ad ID
-    - Returns: The ad image ready for direct visual analysis
+- **`get_insights`** — Performance metrics for a campaign/ad set/ad/account. Inputs: `object_id` (or the `account_id`/`campaign_id`/`adset_id`/`ad_id` aliases), `time_range` (preset string or `{since, until}`), `breakdown` (demographic/platform/creative-asset/attribution/SKAN — see inline docstring for the full list; `platform_position` auto-pairs with `publisher_platform`; `media_type` auto-clears `action_breakdowns`), `level`, `limit`, `after`, `action_attribution_windows`, `action_breakdowns`, `compact` (strips redundant `omni_*`/`onsite_web_*`/pixel-duplicate action-type rows, ~60% smaller).
 
-18. `mcp_meta_ads_update_ad`
-    - Update an ad with new settings
-    - Inputs:
-      - `ad_id`: Meta Ads ad ID
-      - `status`: Update ad status (ACTIVE, PAUSED, etc.)
-      - `bid_amount`: Bid amount in account currency (in cents for USD)
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-    - Returns: Confirmation with updated ad details and a confirmation link
+#### Targeting
 
-19. `mcp_meta_ads_update_adset`
-    - Update an ad set with new settings including frequency caps
-    - Inputs:
-      - `adset_id`: Meta Ads ad set ID
-      - `frequency_control_specs`: List of frequency control specifications
-      - `bid_strategy`: Bid strategy (e.g., 'LOWEST_COST_WITH_BID_CAP', 'LOWEST_COST_WITH_MIN_ROAS')
-      - `bid_amount`: Bid amount in cents. Required for LOWEST_COST_WITH_BID_CAP, COST_CAP, TARGET_COST.
-      - `bid_constraints`: Bid constraints dict. Required for LOWEST_COST_WITH_MIN_ROAS (e.g., `{"roas_average_floor": 20000}`)
-      - `status`: Update ad set status (ACTIVE, PAUSED, etc.)
-      - `targeting`: Targeting specifications including targeting_automation
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-    - Returns: Confirmation with updated ad set details and a confirmation link
+- **`search_interests`** — Search interest targeting options by keyword. Inputs: `query`, `limit`.
+- **`get_interest_suggestions`** — Suggested interests based on existing ones. Inputs: `interest_list`, `limit`.
+- **`estimate_audience_size`** — Comprehensive audience estimation via Meta's `reachestimate` API (with a `delivery_estimate` fallback, disabled by default via `META_MCP_DISABLE_DELIVERY_FALLBACK`). Inputs: `account_id`, `targeting` (full spec — demographics/geo/interests/behaviors), `optimization_goal` (default `REACH`). Also retains backwards-compat simple interest validation via `interest_list`/`interest_fbid_list` (no `account_id`/`targeting` needed for that path).
+- **`search_behaviors`** — All available behavior targeting options. Input: `limit`.
+- **`search_demographics`** — Demographic targeting options. Inputs: `demographic_class` (`demographics`, `life_events`, `industries`, `income`, `family_statuses`, `user_device`, `user_os`), `limit`.
+- **`search_geo_locations`** — Search geographic targeting locations. Inputs: `query`, `location_types` (`country`/`region`/`city`/`zip`/`geo_market`/`electoral_district`), `limit`.
+- **`search_pages_by_name`** — Search Facebook Pages within an account by name. Inputs: `account_id`, `search_term`.
 
-20. `mcp_meta_ads_get_insights`
-    - Get performance insights for a campaign, ad set, ad or account
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `object_id`: ID of the campaign, ad set, ad or account
-      - `time_range`: Time range for insights (default: maximum)
-      - `breakdown`: Optional breakdown dimension (e.g., age, gender, country)
-      - `level`: Level of aggregation (ad, adset, campaign, account)
-      - `action_attribution_windows` (optional): List of attribution windows for conversion data (e.g., ["1d_click", "1d_view", "7d_click", "7d_view"]). When specified, actions and cost_per_action_type include additional fields for each window. The 'value' field always shows 7d_click attribution.
-    - Returns: Performance metrics for the specified object
+#### Budget
 
-21. `mcp_meta_ads_get_login_link`
-    - Get a clickable login link for Meta Ads authentication
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-    - Returns: A clickable resource link for Meta authentication
+- **`create_budget_schedule`** — Schedule a temporary budget increase on a campaign for a high-demand period (Unix timestamps). Inputs: `campaign_id`, `budget_value`, `budget_value_type` (`ABSOLUTE` or `MULTIPLIER`), `time_start`, `time_end`.
 
-22. `mcp_meta_ads_create_budget_schedule`
-    - Create a budget schedule for a Meta Ads campaign
-    - Inputs:
-      - `campaign_id`: Meta Ads campaign ID
-      - `budget_value`: Amount of budget increase
-      - `budget_value_type`: Type of budget value ("ABSOLUTE" or "MULTIPLIER")
-      - `time_start`: Unix timestamp for when the high demand period should start
-      - `time_end`: Unix timestamp for when the high demand period should end
-      - `access_token` (optional): Meta API access token
-    - Returns: JSON string with the ID of the created budget schedule or an error message
+#### Ad Library
 
-23. `mcp_meta_ads_search_interests`
-    - Search for interest targeting options by keyword
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `query`: Search term for interests (e.g., "baseball", "cooking", "travel")
-      - `limit`: Maximum number of results to return (default: 25)
-    - Returns: Interest data with id, name, audience_size, and path fields
+- **`search_ads_archive`** — Search the public Facebook Ads Library archive. Inputs: `search_terms`, `ad_reached_countries` (list of country codes), `ad_type` (default `ALL`, or `POLITICAL_AND_ISSUE_ADS`/`HOUSING_ADS`), `limit`, `fields`.
 
-24. `mcp_meta_ads_get_interest_suggestions`
-    - Get interest suggestions based on existing interests
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `interest_list`: List of interest names to get suggestions for (e.g., ["Basketball", "Soccer"])
-      - `limit`: Maximum number of suggestions to return (default: 25)
-    - Returns: Suggested interests with id, name, audience_size, and description fields
+#### Search
 
-25. `mcp_meta_ads_validate_interests`
-    - Validate interest names or IDs for targeting
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `interest_list`: List of interest names to validate (e.g., ["Japan", "Basketball"])
-      - `interest_fbid_list`: List of interest IDs to validate (e.g., ["6003700426513"])
-    - Returns: Validation results showing valid status and audience_size for each interest
+- **`search`** — Generic search across your own ad accounts, campaigns, ads, pages, and businesses (not the public Ads Library — see [Ad Library](#ad-library) for that). Input: `query`. Returns matching record IDs (`account:...`, `campaign:...`, etc.) cached for a subsequent `fetch` call.
 
-26. `mcp_meta_ads_search_behaviors`
-    - Get all available behavior targeting options
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `limit`: Maximum number of results to return (default: 50)
-    - Returns: Behavior targeting options with id, name, audience_size bounds, path, and description
+#### Auth
 
-27. `mcp_meta_ads_search_demographics`
-    - Get demographic targeting options
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `demographic_class`: Type of demographics ('demographics', 'life_events', 'industries', 'income', 'family_statuses', 'user_device', 'user_os')
-      - `limit`: Maximum number of results to return (default: 50)
-    - Returns: Demographic targeting options with id, name, audience_size bounds, path, and description
+- **`get_login_link`** — Clickable login link for the local Meta OAuth flow. Requires your own Meta app (`META_APP_ID`) and the local callback server enabled; disabled entirely via `META_ADS_DISABLE_LOGIN_LINK`. Not needed on the hosted Pipeboard MCP, which authenticates via a Pipeboard API token instead.
 
-28. `mcp_meta_ads_search_geo_locations`
-    - Search for geographic targeting locations
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `query`: Search term for locations (e.g., "New York", "California", "Japan")
-      - `location_types`: Types of locations to search (['country', 'region', 'city', 'zip', 'geo_market', 'electoral_district'])
-      - `limit`: Maximum number of results to return (default: 25)
-    - Returns: Location data with key, name, type, and geographic hierarchy information
+#### Other
 
-29. `mcp_meta_ads_search` (Enhanced)
-    - Generic search across accounts, campaigns, ads, and pages
-    - Automatically includes page searching when query mentions "page" or "pages"
-    - Inputs:
-      - `access_token` (optional): Meta API access token (will use cached token if not provided)
-      - `query`: Search query string (e.g., "Injury Payouts pages", "active campaigns")
-    - Returns: List of matching record IDs in ChatGPT-compatible format
+- **`fetch`** — Look up a record ID previously returned by `search` in the *same session*. Input: `id` (format `"type:id"`, e.g. `"account:act_123456"`). This does **not** hit the Meta API directly — for direct ID lookups use `get_campaign_details`/`get_adset_details`/`get_ads`/`get_adsets` instead.
+
+#### Custom Audiences
+
+- **`create_custom_audience`** — Create a custom audience. Inputs: `ad_account_id`, `name`, `subtype` (`CUSTOM`, `WEBSITE`, `APP`, `OFFLINE_CONVERSION`, `LOOKALIKE`, `ENGAGEMENT`, etc.), `description`, `customer_file_source`, `rule` (for WEBSITE/engagement audiences), `retention_days`.
+- **`get_custom_audiences`** — List custom audiences for an account. Inputs: `ad_account_id`, `limit`.
+- **`update_custom_audience`** — Update name/description/rule/retention. Input: `audience_id` + fields to change.
+- **`delete_custom_audience`** — Permanently delete a custom audience. Input: `audience_id`. **Irreversible.**
+- **`add_users_to_custom_audience`** — Add users to an existing audience. Inputs: `audience_id`, `schema` (field names, e.g. `["EMAIL","FN","LN"]`), `data` (rows matching schema order), `is_raw` (when `true`, SHA-256 hashes PII fields client-side before sending — required for raw/unhashed input).
+
+#### Lookalike Audiences
+
+- **`create_lookalike_audience`** — Create a lookalike from an existing custom audience. Inputs: `ad_account_id`, `name`, `origin_audience_id`, `country` (default `AU`), `ratio` (0.01–0.20), `type` (`similarity` or `reach`).
+- **`get_lookalike_audience_status`** — Status/detail for a lookalike audience. Input: `audience_id`.
+
+#### Conversion API (CAPI)
+
+- **`send_conversion_events`** — Send server-side conversion events via Meta's Conversions API. Inputs: `pixel_id`, `events` (list — each with `event_name`, `event_time`, `user_data`, optional `custom_data`/`event_source_url`/`action_source`), `test_event_code`. PII fields in `user_data` (`em`, `ph`, `fn`, `ln`, `ct`, `st`, `zp`, `country`, `ge`, `db`, `external_id`) are SHA-256 hashed automatically if not already hashed.
+- **`get_capi_diagnostics`** — Event quality/deduplication diagnostics for a pixel's server-side events. Input: `pixel_id`.
+
+#### Custom Conversions
+
+- **`create_custom_conversion`** — Define a custom conversion from a URL/event rule. Inputs: `ad_account_id`, `name`, `event_source_id` (pixel or app ID), `rule` (JSON string, e.g. `{"url":{"i_contains":"thank-you"}}`), `custom_event_type`, `default_conversion_value`.
+- **`get_custom_conversions`** — List custom conversions for an account. Input: `ad_account_id`.
+
+#### Advanced Insights
+
+- **`get_insights_with_breakdowns`** — Insights with demographic/placement breakdowns and custom field selection (a lower-level alternative to `get_insights`). Inputs: `object_id`, `fields` (explicit metric list), `date_preset`/`time_range`, `time_increment` (`1`/`7`/`monthly`/`all_days`), `breakdowns`, `level`, `filtering`, `limit`.
+- **`create_async_insights_report`** — Start an async insights report job for large result sets. Inputs: same shape as `get_insights_with_breakdowns` minus `time_increment`/`limit`. Returns a `report_run_id` to poll.
+- **`get_async_insights_report`** — Poll/fetch results for a report started with `create_async_insights_report`. Inputs: `report_run_id`, `limit`, `after`. Returns job status + percent complete until the job finishes, then the report rows.
+
+#### Automated Rules
+
+- **`create_automated_rule`** — Create a Meta Ads automated rule (e.g. auto-pause on spend threshold). Inputs: `ad_account_id`, `name`, `evaluation_spec` (trigger conditions), `execution_spec` (action to take), `schedule_spec`, `entity_type` (`CAMPAIGN`/`ADSET`/`AD`, default `CAMPAIGN`).
+- **`get_automated_rules`** — List automated rules for an account. Input: `ad_account_id`.
+- **`get_rule_execution_history`** — Execution history for one rule. Input: `rule_id`.
+
+#### Pixels
+
+- **`get_pixels`** — List Meta Pixels (datasets) for an account. Input: `ad_account_id`.
+- **`get_pixel_events`** — Event statistics for a pixel. Inputs: `pixel_id`, `start_time`/`end_time` (Unix timestamps, optional).
+
+#### A/B Testing
+
+- **`get_ab_tests`** — List A/B tests (ad studies) for an account. Inputs: `ad_account_id`, `limit`.
+- **`create_ab_test`** — Create a split-test ad study across campaigns. Inputs: `ad_account_id`, `name`, `description`, `start_time`/`end_time` (ISO 8601), `campaign_ids`.
+
+#### Product Catalogs
+
+- **`get_product_catalogs`** — Product catalogs owned by a business. Input: `business_id`.
+- **`get_catalog_products`** — Products within a catalog. Inputs: `catalog_id`, `limit`, `filter`.
+- **`create_product_catalog`** — Create a new catalog. Inputs: `business_id`, `name`, `vertical` (default `commerce`; also `destinations`, `flights`, `home_listings`, `hotels`, `vehicles`).
+- **`get_product_sets`** — Product sets within a catalog. Inputs: `catalog_id`, `limit`.
+
+#### Lead Forms
+
+- **`get_lead_forms`** — Lead gen forms for a Page. Inputs: `page_id`, `limit`.
+- **`get_leads`** — Leads collected by a form. Inputs: `form_id`, `limit`.
+- **`create_lead_form`** — Create a lead gen form. Inputs: `page_id`, `name`, `questions` (list of `{type, label?}` — `EMAIL`/`FULL_NAME`/`PHONE`/`CUSTOM`), `privacy_policy_url` (required by Meta), `thank_you_page_url`.
+
+#### Reach & Frequency
+
+- **`get_reach_frequency_predictions`** — List reach/frequency prediction jobs for an account. Inputs: `ad_account_id`, `limit`.
+- **`create_reach_frequency_prediction`** — Create a reach/frequency prediction. Inputs: `ad_account_id`, `targeting`, `start_time`/`end_time`, `frequency_cap`, `objective` (default `REACH`).
+
+#### Business Manager
+
+- **`get_business_info`** — Business Manager details. Input: `business_id`.
+- **`get_business_ad_accounts`** — Ad accounts owned by a Business Manager. Inputs: `business_id`, `limit`.
+- **`get_business_users`** — Users with access to a Business Manager, including `email`. Inputs: `business_id`, `limit`.
+
+#### Page Posts
+
+- **`get_page_posts`** — Posts on a Facebook Page. Inputs: `page_id`, `limit`.
+- **`get_post_insights`** — Metrics for one post. Inputs: `post_id`, `metrics` (defaults to impressions/engaged users/clicks/reactions).
+- **`create_promoted_post`** — One-call boost of an existing Page post: creates a `POST_ENGAGEMENT` campaign → ad set → ad targeting that post in one go. Inputs: `ad_account_id`, `page_id`, `post_id`, `daily_budget` (cents), `targeting` (defaults to broad US 18+), `status` (default `PAUSED`).
+
+#### Offline Conversions
+
+- **`create_offline_event_set`** — Create an offline conversion event set. Inputs: `ad_account_id`, `name`, `description`.
+- **`upload_offline_events`** — Upload offline conversion events (e.g. in-store purchases) to a set. Inputs: `event_set_id`, `events` (each with `match_keys` — PII auto-hashed if not already SHA-256 — plus `event_name`, `event_time`, optional `value`/`currency`).
+
+#### Advanced Creatives
+
+- **`delete_ad_creative`** — Permanently delete a creative. Input: `creative_id`. **Irreversible.**
+- **`get_creative_preview`** — HTML preview of a creative in a given placement. Inputs: `creative_id`, `ad_format` (default `DESKTOP_FEED_STANDARD`; also `MOBILE_FEED_STANDARD`, `INSTAGRAM_STANDARD`, `RIGHT_COLUMN_STANDARD`, `DESKTOP_FEED_SQUARE`).
+- **`get_dynamic_creative_elements`** — `asset_feed_spec`/`object_story_spec` for the creatives on an ad set — the individual components Meta mixes for Dynamic Creative. Input: `adset_id`.
+
+#### Saved Audiences
+
+- **`create_saved_audience`** — Save a targeting spec as a reusable saved audience. Inputs: `ad_account_id`, `name`, `targeting`.
+- **`update_saved_audience`** — Update name/targeting on a saved audience. Input: `audience_id` + fields to change.
+- **`delete_saved_audience`** — Permanently delete a saved audience. Input: `audience_id`. **Irreversible.**
+
+#### Attribution
+
+- **`get_attribution_report`** — Ad-level performance broken down by attribution window. Inputs: `ad_account_id`, `date_preset` (default `last_30d`), `attribution_windows` (default `["1d_click","7d_click","1d_view"]`).
+- **`get_attribution_settings`** — Account-level `attribution_spec`, `default_dsa_beneficiary`, `default_dsa_payor`. Input: `ad_account_id`.
+
 
 ## Licensing
 
