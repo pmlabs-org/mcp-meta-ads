@@ -15,6 +15,22 @@ from .targeting import search_interests, get_interest_suggestions, estimate_audi
 from . import reports  # Import module to register conditional tools
 from . import duplication  # Import module to register conditional duplication tools
 from .openai_deep_research import search, fetch  # OpenAI MCP Deep Research tools
+from . import audiences  # Import module to register custom audience tools
+from . import lookalikes  # Import module to register lookalike audience tools
+from . import conversions  # Import module to register CAPI / custom conversion tools
+from . import insights_advanced  # Import module to register advanced insights tools
+from . import rules  # Import module to register automated rule tools
+from . import pixels  # Import module to register pixel tools
+from . import ab_testing  # Import module to register A/B testing tools
+from . import catalogs  # Import module to register product catalog tools
+from . import lead_forms  # Import module to register lead form tools
+from . import reach_frequency  # Import module to register reach & frequency tools
+from . import business  # Import module to register Business Manager tools
+from . import page_posts  # Import module to register page post tools
+from . import offline_conversions  # Import module to register offline conversion tools
+from . import creatives_advanced  # Import module to register advanced creative tools
+from . import saved_audiences  # Import module to register saved audience tools
+from . import attribution  # Import module to register attribution tools
 
 __all__ = [
     'mcp_server',
