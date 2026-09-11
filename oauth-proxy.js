@@ -93,6 +93,7 @@ const server = http.createServer(async (req, res) => {
   if (path === "/oauth/token" && req.method === "POST") {
     const body = await parseBody(req);
     if (body.grant_type === "authorization_code") {
+      if (body.client_id !== OAUTH_CLIENT_ID || body.client_secret !== OAUTH_CLIENT_SECRET) return sendJson(res, 401, { error: "invalid_client" });
       const stored = authCodes[body.code];
       if (!stored || stored.expiresAt < Date.now()) return sendJson(res, 400, { error: "invalid_grant" });
       const expected = createHash("sha256").update(body.code_verifier).digest("base64url");
