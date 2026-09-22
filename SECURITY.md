@@ -148,3 +148,113 @@ rejects unauthenticated requests in both JSON and `--sse-response` modes.
   Meta access token (`https://developers.facebook.com/tools/debug/accesstoken/`)
   and review Graph API access logs for unexpected calls.
 - Credited to zx (Jace) — GitHub [@manus-use](https://github.com/manus-use).
+
+### GHSA-6v2r-2m4r-768m — Reflected XSS in the local OAuth callback server error page
+
+- **Severity:** Medium
+- **Affected versions:** `<= 1.0.120` when the local OAuth login flow is used
+  (the callback server listens on `127.0.0.1:8080-8089`).
+- **Fixed in:** `1.0.121`
+- **Affected configurations:** Anyone completing an interactive OAuth login on
+  a desktop where a browser can reach `localhost` during the 180-second
+  authorization window. The hosted MCP at `*.mcp.pipeboard.co` does not run the
+  local callback server.
+
+**What went wrong.** The callback server interpolated the `error` query
+parameter straight into its HTML error page, so a page open in the user's
+browser could navigate to the callback URL with script in `error` and execute
+it on the `localhost` origin. The server also exposed an unauthenticated
+`/token` endpoint that returned the stored OAuth authorization code to any
+same-origin page — the escalation target for the XSS above.
+
+**Fix.**
+1. The `error` value is HTML-escaped (and truncated) before being reflected.
+2. Every callback response now carries `Content-Security-Policy: default-src
+   'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+   `Referrer-Policy: no-referrer` and `Cache-Control: no-store`; the success
+   page's inline script runs under a per-response nonce.
+3. The unreferenced `/token` endpoint was removed.
+
+**Action for operators.**
+- Upgrade to `1.0.121` or later.
+- If you completed an OAuth login on a machine where an untrusted page may have
+  been open, reconnect the Meta account so a fresh token is issued.
+- Credited to zx — GitHub [@manus-pi](https://github.com/manus-pi).
+
+### GHSA-j7p8-g5m6-3wv5 — `search`/`fetch` deep-research tools returned one caller's cached records to another
+
+- **Severity:** High (CVSS 3.1 7.5 — `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N`)
+- **Affected versions:** `>= 0.6.0, <= 1.0.121` when run with
+  `--transport streamable-http` and serving more than one caller from one
+  process.
+- **Fixed in:** `1.0.122`
+- **Affected configurations:** Multi-caller deployments only. The default stdio
+  transport, and any deployment where a process serves a single caller, has no
+  cross-caller boundary to cross. The hosted MCP at `*.mcp.pipeboard.co`
+  intercepts `search` and answers it with its own implementation, so the Python
+  cache was never populated there and `fetch` had nothing to return — measured
+  over production traffic, every hosted `fetch` call returned "Record not found"
+  or a schema-validation error.
+
+**What went wrong.** `openai_deep_research.py` cached Meta Ads records in a
+module-level `MetaAdsDataManager` singleton, keyed only by `"<type>:<id>"` with
+no caller, session or tenant component. `search` populated that cache under the
+calling user's credential; `fetch` read it back with no credential resolution
+and no ownership check, so any caller who knew (or guessed) a record id could
+read another caller's cached ad-account, campaign, ad, page or business records
+— including account name, currency, total spend, balance and the raw Graph
+objects. `fetch` never called the Graph API, so nothing downstream validated
+the reader's token either; the HTTP auth gate gets a request past on any
+non-empty bearer token, which is enough for every other tool because Graph
+rejects a bad token, but not for a tool that answers from local state.
+
+**Fix.** The `search` and `fetch` tools and the module that backed them were
+removed outright. They had no working use left to preserve, so scoping the
+cache per caller would have kept the machinery without the benefit.
+
+**Action for operators.**
+- Upgrade to `1.0.122` or later.
+- If you ran an earlier version as a shared multi-caller service, treat the
+  record types listed above as potentially disclosed to other callers of that
+  process.
+- Clients that relied on the deep-research `search`/`fetch` pair should use the
+  typed tools instead: `get_ad_accounts`, `get_campaigns`,
+  `get_campaign_details`, `get_adsets`, `get_ads`, `get_ad_details`.
+- Credited to [@BarakSrour](https://github.com/BarakSrour).
+
+### GHSA-25fp-988j-w29f — MCP resource interface over a process-global, unscoped image cache
+
+- **Severity:** Low (reported as Medium; see *Reachability* below)
+- **Affected versions:** `<= 1.0.122`
+- **Fixed in:** `1.0.123`
+- **Affected configurations:** Would have applied to multi-caller
+  `--transport streamable-http` deployments. The hosted MCP at
+  `*.mcp.pipeboard.co` does not expose the MCP resources interface to clients.
+
+**What was wrong.** `utils.ad_creative_images` was a module-level dict of ad
+creative images keyed by image hash alone, with no caller, session or tenant
+component and no eviction. Two MCP resources registered on the server read it
+directly: `meta-ads://resources` (`list_resources`) enumerated every entry, and
+`meta-ads://images/{resource_id}` (`get_resource`) returned any entry's raw
+bytes. Neither handler resolved or used the request credential, so the shape of
+the code was a cross-caller read with an enumeration primitive attached.
+
+**Reachability.** No shipped version could populate that cache. The only write
+was `create_resource_from_image()`, which has had no call sites since `0.4.0`
+(July 2025) — `get_ad_image` returns the image directly and never cached it.
+Verified against the running server: `meta-ads://resources` returns
+`{"resources": []}` and every `meta-ads://images/...` read returns
+"Resource not found". No creative image of any caller was ever exposed through
+this interface. The finding is accurate about the code and does not describe a
+disclosure that could occur in practice.
+
+**Fix.** The cache, its writer, the `resources` module and both resource
+registrations were removed. An unscoped global with live readers is one commit
+away from being exploitable the moment a write path returns.
+
+**Action for operators.** None required. Upgrade to `1.0.123` to drop the dead
+interface. Clients that enumerated `meta-ads://resources` (it only ever returned
+an empty list) should use `get_ad_image` / `get_ad_creatives` instead.
+
+- Credited to [@Gal3m](https://github.com/Gal3m) and
+  [@mohammad228](https://github.com/mohammad228).
