@@ -86,30 +86,6 @@ async def send_conversion_events(
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_capi_diagnostics(
-    pixel_id: str,
-    access_token: Optional[str] = None,
-) -> str:
-    """
-    Get Conversions API diagnostics for a pixel to check event quality and deduplication.
-
-    Args:
-        pixel_id: Meta Pixel / Dataset ID
-        access_token: Meta API access token (optional - will use cached token if not provided)
-    """
-    if not pixel_id:
-        return json.dumps({"error": "No pixel ID provided"}, indent=2)
-
-    endpoint = f"{pixel_id}/server_events_diagnostic"
-    params = {
-        "fields": "diagnostics",
-    }
-    data = await make_api_request(endpoint, access_token, params)
-    return json.dumps(data, indent=2)
-
-
-@mcp_server.tool()
-@meta_api_tool
 async def create_custom_conversion(
     ad_account_id: str,
     name: str,

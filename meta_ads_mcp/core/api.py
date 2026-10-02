@@ -8,6 +8,7 @@ import httpx
 import asyncio
 import functools
 import os
+import re
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from . import auth
 from .auth import needs_authentication, auth_manager, start_callback_server, shutdown_callback_server
@@ -41,6 +42,42 @@ def _redact_url(url: str) -> str:
     except Exception:
         # Be conservative: if parsing fails, drop the query string entirely.
         return url.split("?", 1)[0]
+
+
+# Graph list responses carry `paging.next` / `paging.previous` URLs with
+# `access_token=<live token>` in the query string. _redact_url only covers
+# error payloads, so successful paged responses leaked the operator token
+# into the caller's transcript. Two layers close that: _strip_paging_links
+# (at the source, in make_api_request) and _redact_secret_params (a final
+# safety net over every tool's output, in meta_api_tool).
+_PAGING_LINK_KEYS = ("next", "previous")
+_SECRET_PARAM_RE = re.compile(
+    r"(" + "|".join(re.escape(p) for p in sorted(_SENSITIVE_QUERY_PARAMS)) + r")=[^&\s\"'\\]+"
+)
+
+
+def _strip_paging_links(obj: Any) -> Any:
+    """Drop `paging.next` / `paging.previous` at any depth.
+
+    Only keys inside a `paging` object are removed, so a data field that is
+    merely named `next` is untouched. `paging.cursors` stays, so callers can
+    still paginate by passing the `after` cursor.
+    """
+    if isinstance(obj, dict):
+        cleaned = {k: _strip_paging_links(v) for k, v in obj.items()}
+        paging = cleaned.get("paging")
+        if isinstance(paging, dict):
+            cleaned["paging"] = {k: v for k, v in paging.items() if k not in _PAGING_LINK_KEYS}
+        return cleaned
+    if isinstance(obj, list):
+        return [_strip_paging_links(v) for v in obj]
+    return obj
+
+
+def _redact_secret_params(text: str) -> str:
+    """Mask `access_token=` / `appsecret_proof=` query values anywhere in text."""
+    return _SECRET_PARAM_RE.sub(r"\1=REDACTED", text)
+
 
 class McpToolError(Exception):
     """Base class for MCP tool errors that must set isError: true.
@@ -281,7 +318,7 @@ async def make_api_request(
 
             # Ensure the response is JSON and return it as a dictionary
             try:
-                return response.json()
+                return _strip_paging_links(response.json())
             except json.JSONDecodeError:
                 # If not JSON, return text content in a structured format
                 return {
@@ -411,8 +448,7 @@ async def make_api_request(
 # Generic wrapper for all Meta API tools
 def meta_api_tool(func):
     """Decorator for Meta API tools that handles authentication and error handling."""
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
+    async def _guarded(*args, **kwargs):
         try:
             # Log function call
             logger.debug(f"Function call: {func.__name__}")
@@ -541,5 +577,14 @@ def meta_api_tool(func):
         except Exception as e:
             logger.error(f"Error in {func.__name__}: {str(e)}")
             return json.dumps({"error": str(e)}, indent=2)
+
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        result = await _guarded(*args, **kwargs)
+        # Last line of defence: no tool output may carry the access token or
+        # appsecret_proof, whichever field a Graph URL ends up in.
+        if isinstance(result, str):
+            return _redact_secret_params(result)
+        return result
 
     return wrapper 

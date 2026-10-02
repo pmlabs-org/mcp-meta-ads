@@ -19,6 +19,19 @@ Adding a new file to `meta_ads_mcp/core/` with `@mcp_server.tool()`-decorated fu
 
 A module can be present in the repo, pass CI, and ship in every built Docker image while being 100% invisible as a callable tool — because CI/tests only import the module directly, they don't exercise the `server.py` HTTP-transport startup path the same way the deployed server does. **Always verify via a live `tools/list` call after registering a new module, not just a passing test suite.**
 
+## Tool output must never carry the access token
+
+Graph list responses include `paging.next` / `paging.previous` URLs with `access_token=<live system-user token>` in the query string. Before 2026-10-02 only *error* payloads were scrubbed, so any paged success response (real case: `get_pixel_events`) echoed the never-expiring token into the caller's transcript. Two layers now prevent it, both in `meta_ads_mcp/core/api.py`:
+
+1. `make_api_request` runs `_strip_paging_links` on every JSON response — drops `paging.next`/`paging.previous` at any depth, keeps `paging.cursors` (paginate with `after`, never by following a URL).
+2. `meta_api_tool` runs `_redact_secret_params` over every string result — masks any `access_token=` / `appsecret_proof=` value, whatever field it sits in.
+
+A new tool that bypasses `meta_api_tool` or builds its own HTTP call loses layer 2 — keep using the decorator. Regression tests: `tests/test_response_token_scrub.py`.
+
+## Removed upstream tools
+
+`get_capi_diagnostics` was removed 2026-10-02: Meta no longer serves `/{pixel_id}/server_events_diagnostic` (Graph v25 returns 400 code 2500 "Unknown path components"). If upstream's sync reintroduces it, drop it again — it can only error.
+
 ## GHCR permissions can silently break on a GitHub org transfer
 
 See `pmin-brain/context/tool-gotchas.md` § GitHub for the full incident writeup. Short version: this repo (and others) transferred from the `PM-Labs` org to `pmlabs-org`. The git remote still resolves (`git push` to the old `PM-Labs/...` URL succeeds via GitHub's redirect), but the GHCR container package's own "Manage Actions access" grant did not carry over — CI's `docker push` step 403'd on every run for about a week (2026-08-05 to 2026-08-11) despite correct `permissions: packages: write` in the workflow YAML. A separate `Test and Build` workflow (tests only, no push) kept reporting green the whole time, so the failure went unnoticed until someone checked the `deploy` job's logs specifically.

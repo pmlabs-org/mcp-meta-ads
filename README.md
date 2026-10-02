@@ -201,7 +201,7 @@ For advanced users who need to self-host, the package can be installed from sour
 
 ### Available MCP Tools
 
-**84 tools** across 30 categories. Quick reference:
+**83 tools** across 30 categories. Quick reference:
 
 | Category | Tools |
 |---|---|
@@ -220,7 +220,7 @@ For advanced users who need to self-host, the package can be installed from sour
 | [Other](#other) | `fetch` (record cache lookup, see [Search](#search)) |
 | [Custom Audiences](#custom-audiences) | `create_custom_audience`, `get_custom_audiences`, `update_custom_audience`, `delete_custom_audience`, `add_users_to_custom_audience` |
 | [Lookalike Audiences](#lookalike-audiences) | `create_lookalike_audience`, `get_lookalike_audience_status` |
-| [Conversion API (CAPI)](#conversion-api-capi) | `send_conversion_events`, `get_capi_diagnostics` |
+| [Conversion API (CAPI)](#conversion-api-capi) | `send_conversion_events` |
 | [Custom Conversions](#custom-conversions) | `create_custom_conversion`, `get_custom_conversions` |
 | [Advanced Insights](#advanced-insights) | `get_insights_with_breakdowns`, `create_async_insights_report`, `get_async_insights_report` |
 | [Automated Rules](#automated-rules) | `create_automated_rule`, `get_automated_rules`, `get_rule_execution_history` |
@@ -333,7 +333,6 @@ All write tools (`create_*`, `update_*`) default new objects to `status: PAUSED`
 #### Conversion API (CAPI)
 
 - **`send_conversion_events`** — Send server-side conversion events via Meta's Conversions API. Inputs: `pixel_id`, `events` (list — each with `event_name`, `event_time`, `user_data`, optional `custom_data`/`event_source_url`/`action_source`), `test_event_code`. PII fields in `user_data` (`em`, `ph`, `fn`, `ln`, `ct`, `st`, `zp`, `country`, `ge`, `db`, `external_id`) are SHA-256 hashed automatically if not already hashed.
-- **`get_capi_diagnostics`** — Event quality/deduplication diagnostics for a pixel's server-side events. Input: `pixel_id`.
 
 #### Custom Conversions
 
