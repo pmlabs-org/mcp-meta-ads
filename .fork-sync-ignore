@@ -20,3 +20,14 @@ e4f872b  already applied as d186d79 (fix(auth): distinguish policy-blocked error
 
 # ceee65b — upstream release bump to 1.0.121; we manage our own versioning
 ceee65b8180332f98660aee0e544aeb7855e5bd2
+
+# --- Security fixes cherry-picked 2026-10-12 (version bump conflicts; patch diverges) ---
+# All 8 applied to our fork — patches differ because we keep version = "1.0.120".
+# The --cherry-pick detector won't match them; list here to suppress re-apply.
+271ea4cd5e0e21ae306e3768af8fc4dd1b928298  applied as 05dc4e0 (GHSA-6v2r-2m4r-768m: HTML-escape OAuth callback error param)
+8b6b0fd181850d1eae539c9166a7f5b352cbaa63  applied as cd3af26 (GHSA-25fp-988j-w29f: remove process-global image cache)
+9365b94ce2c2a8a0f3cce310445308530e178320  applied as ded37f8 (GHSA-75j5-qp3x-mx37: require OAuth state on callback)
+d136b4ce681ceeaf68529fbf17b8bc276592740d  applied as 6095cad (GHSA-cx77-j6h8-3382: require is_global in SSRF guard)
+8f8eda64dc00a04661b2d136dfb9415fc4b26800  applied as 952f627 (GHSA-2h5x-4qc8-3x27: confine save_ad_image_locally)
+d5eaceeb00edb5a71c7432bb437bef120cc65bb6  applied as 2c7ced2 (GHSA-prmg-4fr3-mm6x: write token cache owner-only)
+093062c6655682a20ff0814b468e0e877263d494  applied as 5815a2b (GHSA-r3r9-3mrh-x966: stop writing tokens to debug log)
