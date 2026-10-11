@@ -17,3 +17,6 @@ e4f872b  already applied as d186d79 (fix(auth): distinguish policy-blocked error
 # --- Upstream README/docs not relevant to our fork ---
 4d12f65  docs(readme): Pipeboard MCP family branding — not relevant to our fork
 96eaf2d
+
+# ceee65b — upstream release bump to 1.0.121; we manage our own versioning
+ceee65b8180332f98660aee0e544aeb7855e5bd2
